@@ -1,4 +1,5 @@
-@page overview High level overview of KLEE. This document contains a high level overview of the inner workings of KLEE.
+@page overview
+High level overview of KLEE. This document contains a high level overview of the inner workings of KLEE.
 KLEE的高级概览。本文档包含KLEE内部工作的高级概述。
 
 KLEE implements symbolic execution by interpreting LLVM bitcode. Symbolic memory is defined by inserting special calls to KLEE (namely klee_make_symbolic) During execution, KLEE tracks all uses of symbolic memory. Constraints on symbolic memory usage are collected. Memory that is defined using previously declared symbolic memory become symbolic as well. Whenever a branch refering to symbolic memory is encountered, KLEE forks the entire states and explores each side of the branch for which a possible solution to the symbolic constraints can be found. KLEE makes queries to STP to solve symbolic constraints.
@@ -7,14 +8,16 @@ KLEE通过解释LLVM位码来实现符号执行。符号内存的定义是在执
 The rest of this document describes some of the important components of KLEE
 本文的其余部分将介绍KLEE的一些重要组件
 
-@section executor Interpreter klee::Interpreter is the main abstract class defining the interface of the bitcode interpreter. klee::Executor is the main concrete instance of this class. Application states (i.e. memory, registers and PC) are stored in instances of class klee::ExecutionState. There is one such instance for each path beeing executed (except when some states are merged together). On a branch, if condition is symbolic, klee::Executor::fork returns a klee::ExecutionState::StatePair which is a pair of ExecutionState to be executed.
-klee::解释器是定义位码解释器接口的主要抽象类。Executor是这个类的主要具体实例。应用程序状态(即内存、寄存器和PC)存储在类klee::ExecutionState的实例中。对于执行的每个路径都有一个这样的实例(除非某些状态合并在一起)。在分支上，如果条件是符号的，那么klee::Executor::fork将返回一个klee::ExecutionState::StatePair，它是要执行的一对ExecutionState。
+@section executor Interpreter
+klee::Interpreter is the main abstract class defining the interface of the bitcode interpreter. klee::Executor is the main concrete instance of this class. Application states (i.e. memory, registers and PC) are stored in instances of class klee::ExecutionState. There is one such instance for each path beeing executed (except when some states are merged together). On a branch, if condition is symbolic, klee::Executor::fork returns a klee::ExecutionState::StatePair which is a pair of ExecutionState to be executed.
+klee::解释器是定义bitcode解释器接口的主要抽象类。klee::Executor是这个类的主要具体实例。应用程序状态(即内存、寄存器和PC)存储在类klee::ExecutionState的实例中。对于执行的每个路径都有一个这样的实例(除非某些状态合并在一起)。在分支上，如果条件是符号的，那么klee::Executor::fork将返回一个klee::ExecutionState::StatePair，它是要执行的一对ExecutionState。
 
-@section memory Memory model MemoryObject's represent allocation sites in the program (calls to malloc, stack objects, global variables) and, at least conceptually, can be thought of as the unique name for the object allocated at that site. ObjectState's are used to store the actual contents of a MemoryObject in a particular ExecutionState (but can be shared). I need better names for these two things.
-@section内存内存模型MemoryObject表示程序中的分配站点(调用malloc、堆栈对象、全局变量)，至少在概念上可以认为是在该站点上分配的对象的惟一名称。ObjectState用于将MemoryObject的实际内容存储在特定的ExecutionState中(但可以共享)。我需要给这两样东西取个更好的名字。
+@section memory Memory model
+MemoryObject's represent allocation sites in the program (calls to malloc, stack objects, global variables) and, at least conceptually, can be thought of as the unique name for the object allocated at that site. ObjectState's are used to store the actual contents of a MemoryObject in a particular ExecutionState (but can be shared). I need better names for these two things.
+MemoryObject表示程序中的分配站点(调用malloc、堆栈对象、全局变量)，至少在概念上可以认为是在该站点上分配的对象的惟一名称。ObjectState用于将MemoryObject的实际内容存储在特定的ExecutionState中(但可以共享)。我需要给这两样东西取个更好的名字。
 
 Each ExecutionState stores a mapping of MemoryObjects -> ObjectState using the AddressSpace data structure (implemented as an immutable tree so that copying is cheap and the shared structure is exploited). Each AddressSpace may "own" some subset of the ObjectStates in the mapping. When an AddressSpace is duplicated it loses ownership of the ObjectState in the map. Any subsequent write to an ObjectState will create a copy of the object (AddressSpace::getWriteable). This is the COW mechanism (which gets used for all objects, not just globals).
-每个执行状态存储内存对象的一个映射-&gt;ObjectState使用AddressSpace数据结构(实现为不可变树，因此复制成本很低，共享结构也被利用)。每个AddressSpace可能“拥有”映射中ObjectStates的某个子集。当一个地址空间被复制时，它将失去映射中ObjectState的所有权。对ObjectState的任何后续写操作都将创建该对象的副本(AddressSpace::getWriteable)。这是COW机制(用于所有对象，而不仅仅是全局对象)。
+每个执行状态存储MemoryObjects->ObjectState的一个映射，使用AddressSpace数据结构(实现为不可变树，因此复制成本很低，共享结构也被利用)。每个AddressSpace可能“拥有”mapping中ObjectStates的某个子集。当一个地址空间被复制时，它将失去映射中ObjectState的所有权。对ObjectState的任何后续写操作都将创建该对象的副本(AddressSpace::getWriteable)。这是COW机制(用于所有对象，而不仅仅是全局对象)。
 
 From the point of view of the state and this mapping there is no distinction between stack, heap, and global objects. The only special handling for stack objects is that the MemoryObject is marked as isLocal and the MemoryObject is stored in the StackFrame alloca list. When the StackFrame is popped these objects are then unbound so that the state can no longer access the memory directly (references to the memory object may still remain in ReadExprs, but conceptually the actual memory is no longer addressable).
 从状态和映射的角度来看，栈、堆和全局对象之间没有区别。堆栈对象的惟一特殊处理是将MemoryObject标记为isLocal，而MemoryObject存储在StackFrame alloca列表中。当StackFrame被弹出时，这些对象将被解除绑定，这样状态就不再能够直接访问内存(对内存对象的引用可能仍然保留在ReadExprs中，但是从概念上讲，实际的内存不再是可寻址的)。
@@ -22,14 +25,68 @@ From the point of view of the state and this mapping there is no distinction bet
 It is also important that the AddressSpace mapping is ordered. We use this when we need to resolve a symbolic address to an ObjectState by first getting a particular value for the symbolic address, and using that value to start looking for objects that the pointer can fall within. Difference betweens MemoryObjects and ObjectStates ?
 还有一点很重要，即AddressSpace映射是有序的。当我们需要将一个符号地址解析为ObjectState时，我们使用这个方法，首先为这个符号地址获取一个特定的值，然后使用这个值来开始查找指针可能所属的对象。内存对象和对象状态之间的区别?
 
-@section expression Expressions The various Expr classes mostly model the llvm instruction set. ref<Expr> is used to maintain the reference count but also embeds any constant expressions. In fact in the current code base ConstantExprs should almost never be created. Most of the Expr's are straightforward. Some of the most important ones are Concat?Expr, which join some number of bytes into a larger type, ExtractExpr which extracts smaller types from larger ones, and ReadExpr which is a symbolic array access.
-各种Expr类主要对llvm指令集进行建模。用于维护引用计数，但也嵌入任何常数表达式。事实上，在当前的代码库中，ConstantExprs几乎不应该被创建。大多数Expr都很简单。其中一些最重要的是Concat?Expr，它将一些字节连接到一个较大的类型中，ExtractExpr从较大的类型中提取较小的类型，ReadExpr是一个符号数组访问。
+@section expression Expressions
+The various Expr classes mostly model the llvm instruction set. ref<Expr> is used to maintain the reference count but also embeds any constant expressions. In fact in the current code base ConstantExprs should almost never be created. Most of the Expr's are straightforward. Some of the most important ones are Concat?Expr, which join some number of bytes into a larger type, ExtractExpr which extracts smaller types from larger ones, and ReadExpr which is a symbolic array access.
+各种Expr类主要对llvm指令集进行建模。ref<Expr>用于维护引用计数，但也嵌入任何常数表达式。事实上，在当前的代码库中，ConstantExprs几乎不应该被创建。大多数Expr都很简单。其中一些最重要的是Concat?Expr，它将一些字节连接到一个较大的类型中，ExtractExpr从较大的类型中提取较小的类型，ReadExpr是一个符号数组访问。
 
 The way memory is implemented all accesses are broken down into byte level operations. This means that the memory system (by which I mean the ObjectState data structure) tends to use a lot of ExtractExpr and Concat?Expr, so it is very important that these expressions fold their operands when possible.
-内存的实现方式将所有访问分解为字节级的操作。这意味着内存系统(这里我指的是ObjectState数据结构)倾向于使用大量ExtractExpr和Concat?因此，在可能的情况下，这些表达式折叠它们的操作数是非常重要的。
+内存的实现方式将所有访问分解为字节级的操作。这意味着内存系统(这里我指的是ObjectState数据结构)倾向于使用大量ExtractExpr和Concat?Expr，因此，在可能的情况下，这些表达式折叠它们的操作数是非常重要的。
 
 The ReadExpr is probably the most important one. Conceptually it is simply an index and a list of (index, value) updates (writes). The ReadExpr evaluates to all the values for which the two indices can be equal. The ObjectState structure uses a cache for concrete writes and for symbolic writes at concrete indices, but for writes at symbolic indices it must construct a list of such updates. These are stored in the UpdateList and UpdateNode structures which are again immutable data structures so that copy is cheap and the sharing is exploited.
 ReadExpr可能是最重要的一个。从概念上讲，它只是一个索引和一个(索引、值)更新(写)列表。ReadExpr计算两个索引可以相等的所有值。ObjectState结构使用一个缓存来进行具体的写操作和针对具体索引的符号写操作，但是对于针对符号索引的写操作，它必须构造这样的更新列表。这些数据被存储在UpdateList和UpdateNode结构中，这两个结构也是不可变的数据结构，因此复制成本很低，并且可以利用共享。
 
-@section searcher Searcher Base classe: klee::Searcher. The Executor uses a Searcher to select the next state (i.e. program instance following a single path) for which an instruction will be executed. There are multiple implementations of Searcher in klee, implementing different search policies. klee::RandomSearcher selects the next state randomly. klee::DFSSearcher uses a depth first approach. klee::MergingSearcher tries to merge states ?
-@section searcher searcher Base classe: klee:: searcher。执行程序使用一个搜索程序来选择下一个执行指令的状态(例如，沿着单一路径的程序实例)。在klee中有多种Searcher实现，实现了不同的搜索策略。RandomSearcher随机选择下一个状态。DFSSearcher使用深度优先方法。MergingSearcher试图合并状态?
+@section searcher Searcher
+Base classe: klee::Searcher. The Executor uses a Searcher to select the next state (i.e. program instance following a single path) for which an instruction will be executed. There are multiple implementations of Searcher in klee, implementing different search policies. klee::RandomSearcher selects the next state randomly. klee::DFSSearcher uses a depth first approach. klee::MergingSearcher tries to merge states ?
+@section searcher Dearcher Base classe: klee::Searcher。执行程序使用一个搜索程序来选择下一个执行指令的状态(例如，沿着单一路径的程序实例)。在klee中有多种Searcher实现，实现了不同的搜索策略。RandomSearcher随机选择下一个状态。DFSSearcher使用深度优先方法。MergingSearcher试图合并状态?
+
+
+klee是什么
+
+klee是通过对llvm bitcode进行解释以实现符号执行的工具。它通过插入函数调用（klee_make_symbolic）对内存进行符号化。并且会跟踪符号内存的使用，并收集使用这些符号内存的约束。如果有使用前面符号内存的其他内存，那么该内存也将会被符号化。当遇到一个使用符号化内存的分支时，KLEE会将执行状态一分为二，看看分支的哪一边可以找到一个可以满足符号约束的解。KLEE使用STP来求解这些符号约束。
+klee的主要组件
+
+    解释器（Interpreter）
+
+klee::Interpreter 在字节码解释器接口中是一个主要的抽象类。klee::Executor 是这个类的一个主要的实例。应用程序的状态（比如说：内存，寄存器，和程序计数器）会被存储在klee::ExecutionState 的一个实例中。每一条路径被执行的的时候都会有一个这样子的实例（除非当一些执行状态又合并到了一起的时候）。在有分支的地方，如果条件是符号化的，那klee::Executor::fork 方法就会返回一个klee::ExecutionState::StatePair 来表示一对由分支产生的ExecutionState 。
+2. 内存建模（memory）
+
+MemoryObject 表示程序里面的地址分配（比如说调用malloc，stack objects， global variables），同时我们也可以简单的认为它是一个分配在某个地址上的对象独一无二的名字。ObjectState 是用来存储在一个特定的ExecutionState 中一个MemoryObject 中实际的内容（是不能被共享的）。
+
+每个ExecutionState都存放着一个MenoryObjects->ObjectState的映射，利用地址空间数据结构（AddressSpace）进行存储，以immutable tree的形式实现。采用COW(写时复制)的方式，当向一个ObjectState进行写操作的时候，将会为这个object创建一个副本（AddressSpace::getWriteable）
+
+    通过函数AddressSpace::getWriteable(ObjectState os),找到适合写入的os,如果需要将进行object副本创建吗，返回os或者os的副本
+
+从状态和映射的角度来看，stack、heap和全局对象并没有什么区别。唯一对stack对象有一些不同的处理就是，MemoryObject会被标记为isLocal并且这个MemoryObject会被存储在StackFrame的分配表里面。当StackFrame进行pop之后，这些对象都会被释放掉，以至于当前状态就再也不能直接访问内存了（对内存对象的引用可能仍然会在ReadExprs里，但是理论上说，实际的地址我们应该是找不到了）。
+
+另外很重要的一点是，AddressSpace的映射是有序的。当我们想将一个符号化的地址解析为ObjectState时我们会用到它，我们先用一个特殊的值来表示符号化的地址，然后用这个值来找那些指针指向这个地址的对象。MemoryObjects和ObjectStates处理方式一样。
+
+    当处理符号化地址的时候，会先为这个符号化地址获得一个具体值，然后利用它开始查看指针能够落到的Object范围？
+
+    表达式（Expression）
+
+表达式（Expressions）
+很多Expr类都对llvm的指令集进行了建模。ref是用来维护引用计数的，但是同时也是嵌入了许多常量表达式。事实上在现在的代码中，ConstantExprs几乎都不用被创建了。大多数表达式都是简明直接的。
+
+Expr类对llvm指令集进行建模，也用于表示具体表达式（constant expression）
+有四种类型：
+
+1.Constant Expr
+2.Concat Expr:用一些字节组成更大的类型
+3.Extract Expr：从大的类型中提取出小的
+4.ReadExpr:符号化数组访问，（index，value）列表形式
+
+内存的实现方式是将所有的访问拆解为字节级的操作，所以内存系统（即ObjectState）会用到大量的ConcatExpr和ExtractExpr，所以这些表达式应该尽可能的压缩他们的操作数。
+
+ReadExpr可能是里面最重要的。理论上说，它就是一个索引和一些更新（写入）。ReadExpr会计算所有的值，所以两个索引是可以相等的。ObjectState使用一个cache处理具体的index的具体写入和符号化写入，但是对于符号化的index必须要创建一个列表。上述更新存储在UpdateList和UpdateNode结构中,以immutable的形式，这样可使拷贝成本较小且更容易实现共享。
+
+    对于每个ObjectState都会维护一个（index,value）吗？index和value分别代表什么含义?是offset和value吗？
+
+    搜索器（Searcher）
+
+基础类是klee::Searcher。Executor通过使用一个Searcher 去选择下一个状态（也就是说一个程序实例只走一条路径），从而使得一条语句被执行。在KLEE中有非常多的Searcher实现，分别实现了不同的搜索策略。
+
+klee提供了多种搜索策略:
+
+klee::RandomSearcher 随机选择
+klee::DFSSearcher 深度优先搜索
+klee::MergingSearcher 合并states
