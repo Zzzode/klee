@@ -31,6 +31,20 @@ autoconf/aclocal.m4
 autoconf/autom4te.cache/
 autom4te.cache/
 
+# vscode and clion
 .vscode/*
 .idea/
-/cmake-build-debug
+cmake-build-debug/
+
+# klee example files
+*.bc
+*.ll
+*.ktest
+info
+run.istats
+run.stats
+messages.txt
+warnings.txt
+
+klee-output*
+klee-last
