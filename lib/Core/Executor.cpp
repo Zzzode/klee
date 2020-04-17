@@ -1588,6 +1588,7 @@ Function *Executor::getTargetFunction(Value *calledVal, ExecutionState &state) {
 // TODO: modify
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
+  const int instruction = i->getOpcode();
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
@@ -2005,7 +2006,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     break;
   }
 
-    // Special instructions
+  // Special instructions
   case Instruction::Select: {
     // NOTE: It is not required that operands 1 and 2 be of scalar type.
     ref<Expr> cond = eval(ki, 0, state).value;
@@ -2020,8 +2021,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     terminateStateOnExecError(state, "unexpected VAArg instruction");
     break;
 
-    // Arithmetic / logical
-
+  // Arithmetic / logical
   case Instruction::Add: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
@@ -2124,7 +2124,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   }
 
     // Compare
-
   case Instruction::ICmp: {
     CmpInst *ci = cast<CmpInst>(i);
     ICmpInst *ii = cast<ICmpInst>(ci);

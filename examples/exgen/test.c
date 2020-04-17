@@ -13,7 +13,7 @@ int test(int x, int y){
 }
 
 int main(){
-    int a, b, c = -1;
+    int a, b, c;
     int result;
     klee_make_symbolic(&a, sizeof(a), "a");
     klee_make_symbolic(&b, sizeof(b), "b");
