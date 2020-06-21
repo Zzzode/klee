@@ -1,33 +1,26 @@
 #include "klee/klee.h"
 
-int plus(int a, int b){
-    int c;
-    c = a + b;
-    return c;
+int a, b;
+
+int plus() {
+  int c, result;
+
+  c = a + b;
+
+  if (a > 0 && b > 0) {
+    if (c < a)
+      result = 1;
+    else if(c == a)
+      result = -1;
+    else
+      result = 0;
+  }
+
+  return result;
 }
 
-int test(int x, int y){
-    int result;
-    result = plus(x, y);
-    return result;
-}
+int main() {
+  plus();
 
-int main(){
-    int a, b, c;
-    int result;
-    klee_make_symbolic(&a, sizeof(a), "a");
-    klee_make_symbolic(&b, sizeof(b), "b");
-    klee_make_symbolic(&c, sizeof(c), "c");
-    klee_make_symbolic(&result, sizeof(result), "result");
-    // klee_assume(result == 1 & a > 0 & b > 0);
-    if(a > 0 && b > 0){
-        c = test(a, b);
-        if(c < a)
-            result = 1;
-        else
-            result = 0;
-    } else
-        result = 2;
-    
-    return 0;
+  return 0;
 }

@@ -167,7 +167,7 @@ private:
 
   /// The index into the current \ref replayKTest or \ref replayPath
   /// object.
-  unsigned replayPosition;
+  unsigned replayPosition{};
 
   /// When non-null a list of "seed" inputs which will be used to
   /// drive execution.
