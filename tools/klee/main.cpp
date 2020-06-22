@@ -1128,7 +1128,7 @@ std::vector<std::string> split(const std::string &str,
 std::vector<std::pair<std::string, std::set<std::vector<std::string>>>>
 parseJson(const std::string &newPath) {
   //从文件中读取，保证当前文件夹有.json文件
-  std::string jsonPath = newPath + "/" + "eosContract1235_mockcontract.json";
+  std::string jsonPath = newPath + "/" + "test.json";
   std::ifstream inFile(jsonPath, std::ios::in);
   if (!inFile.is_open()) {
     std::cout << "Error opening file\n";
@@ -1210,6 +1210,7 @@ void getFiles(const std::string &newPath, std::vector<std::string> &fileNames) {
   }
   closedir(dir);
 }
+
 void modifyLLVM(const std::string &newPath, const std::string &llName) {
   std::ifstream inLLFile;
   std::ofstream outLLfile;
@@ -1236,30 +1237,94 @@ void modifyLLVM(const std::string &newPath, const std::string &llName) {
   funNames = parseJson(newPath);
 
   // measure all Functions
-  std::vector<std::string> globalDeclares;
-  std::vector<std::string> symbolicLines;
   for (const auto &funName : funNames) {
     // find if this function has figured
-    auto index = std::find(fileNames.begin(), fileNames.end(), funName.first);
-    if (index != fileNames.end())
+    if (find(fileNames.begin(), fileNames.end(), funName.first) !=
+        fileNames.end())
       continue;
+
     // configure llvm lines
-    int gCount = 0; // count globale declares
     for (auto instructions : funName.second) {
-      std::string gDeclare;
-      if (gCount == 0)
-        gDeclare += "@.str = private unnamed_addr constant ";
-      else
-        gDeclare += "@.str." + std::to_string(gCount) +
-                    " = private unnamed_addr constant ";
+      std::string varPattern_1 =
+          " *" + instructions[3] + R"( = load i32, i32\* (@\w+).*)";
+      std::string varPattern_2 =
+          " *" + instructions[4] + R"( = load i32, i32\* (@\w+).*)";
+      std::string resPattern =
+          R"( *store i32 )" + instructions[0] + R"(, i32\* ([@%]\w+).*)";
+      std::regex varReg_1(varPattern_1);
+      std::regex varReg_2(varPattern_2);
+      std::regex resReg(resPattern);
+      std::smatch loadResult;
+      std::string varName_1, varName_2, resName;
+      std::vector<std::string> vars;
+      // FIXME 这边需要先确定.ll文件中的最初声明位置
+      bool inFunBlock = false;
+      for (const auto &fileLine : fileLines) {
+        if (inFunBlock && fileLine.find('}') != std::string::npos) {
+          inFunBlock = false;
+          break;
+        }
+        if (!inFunBlock) {
+          std::string tmpPattern = ".*@" + funName.first + R"(.*\{)";
+          std::regex funDeclarePattern(tmpPattern);
+          std::smatch regFunDeclareResult;
+          inFunBlock = std::regex_match(fileLine, regFunDeclareResult,
+                                        funDeclarePattern);
+          continue;
+        }
 
-      gDeclare += "[" + std::to_string(instructions[3].size() + 1) +
-                  " x i8] c" + R"(")" + instructions[3] + R"(\00")" +
-                  ", align 1";
-      //      puts(gDeclare.c_str());
-      globalDeclares.push_back(gDeclare);
+        varName_1 = std::regex_match(fileLine, loadResult, varReg_1) &&
+                            varName_1.empty()
+                        ? loadResult[1].str()
+                        : varName_1;
+        varName_2 = std::regex_match(fileLine, loadResult, varReg_2) &&
+                            varName_2.empty()
+                        ? loadResult[1].str()
+                        : varName_2;
+        resName =
+            std::regex_match(fileLine, loadResult, resReg) && resName.empty()
+                ? loadResult[1].str()
+                : resName;
+      }
+      vars.push_back(resName);
+      vars.push_back(varName_1);
+      vars.push_back(varName_2);
 
-      gCount++;
+      // each fun should be measured independent
+      std::vector<std::string> globalDeclares;
+      std::vector<std::string> symbolicLines;
+
+      // ! 非全局变量的命名为数字
+      int gCount = 0; // count global declares
+      for (int i = 0; i < 3; ++i) {
+        std::string tmpGol = R"(@.str)";
+        std::string tmpSym =
+            R"(call void @klee_make_symbolic(i8* bitcast (i32* )" + vars[i] +
+            R"( to i8*), i64 4, i8* getelementptr inbounds ([)" +
+            std::to_string(vars[i].size()) + R"( x i8], [)" +
+            std::to_string(vars[i].size()) + R"( x i8]* @.str)";
+        if (i == 0) {
+          tmpGol += " = private unnamed_addr constant [" +
+                    std::to_string(vars[i].size()) + R"( x i8] c")" +
+                    vars[i].substr(1) + R"(\00", align 1)";
+          tmpSym += R"(, i64 0, i64 0)))";
+        } else {
+          tmpGol += "." + std::to_string(i) +
+                    " = private unnamed_addr constant [" +
+                    std::to_string(vars[i].size()) + R"( x i8] c")" +
+                    vars[i].substr(1) + R"(\00", align 1)";
+          tmpSym += "." + std::to_string(i) + R"(, i64 0, i64 0)))";
+        }
+
+        globalDeclares.push_back(tmpGol);
+        symbolicLines.push_back(tmpSym);
+      }
+
+      // TODO 在.ll文件中添加声明和函数调用
+      // FIXME 局部变量无法使用`bitcast (%struct.str* @global to i8*)`
+      for (const auto &fileLine : fileLines) {
+        ;
+      }
     }
   }
 
