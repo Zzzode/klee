@@ -1211,7 +1211,7 @@ void getFiles(const std::string &newPath, std::vector<std::string> &fileNames) {
   closedir(dir);
 }
 
-void modifyLLVM(const std::string &newPath, const std::string &llName) {
+std::string modifyLLVM(const std::string &newPath, const std::string &llName) {
   std::ifstream inLLFile;
   std::ofstream outLLfile;
 
@@ -1237,23 +1237,29 @@ void modifyLLVM(const std::string &newPath, const std::string &llName) {
   funNames = parseJson(newPath);
 
   // measure all Functions
-  for (const auto &funName : funNames) {
+  // each fun should be measured independent
+  std::vector<std::string> globalDeclares;
+  std::vector<std::string> symbolicLines;
+  std::pair<std::string, std::set<std::vector<std::string>>> funName;
+  for (const auto &tmpfunName : funNames) {
     // find if this function has figured
     if (find(fileNames.begin(), fileNames.end(), funName.first) !=
         fileNames.end())
       continue;
 
+    funName = tmpfunName;
+  }
+
+  if (!funName.first.empty()) {
     // configure llvm lines
+    int gCount = 0; // count global declares
     for (auto instructions : funName.second) {
-      std::string varPattern_1 =
-          " *" + instructions[3] + R"( = load i32, i32\* (@\w+).*)";
-      std::string varPattern_2 =
-          " *" + instructions[4] + R"( = load i32, i32\* (@\w+).*)";
-      std::string resPattern =
-          R"( *store i32 )" + instructions[0] + R"(, i32\* ([@%]\w+).*)";
-      std::regex varReg_1(varPattern_1);
-      std::regex varReg_2(varPattern_2);
-      std::regex resReg(resPattern);
+      std::regex varReg_1(" *" + instructions[3] +
+                          R"( = load i32, i32\* (@\w+).*)");
+      std::regex varReg_2(" *" + instructions[4] +
+                          R"( = load i32, i32\* (@\w+).*)");
+      std::regex resReg(R"( *store i32 )" + instructions[0] +
+                        R"(, i32\* ([@%]\w+).*)");
       std::smatch loadResult;
       std::string varName_1, varName_2, resName;
       std::vector<std::string> vars;
@@ -1265,8 +1271,7 @@ void modifyLLVM(const std::string &newPath, const std::string &llName) {
           break;
         }
         if (!inFunBlock) {
-          std::string tmpPattern = ".*@" + funName.first + R"(.*\{)";
-          std::regex funDeclarePattern(tmpPattern);
+          std::regex funDeclarePattern(".*@" + funName.first + R"(.*\{)");
           std::smatch regFunDeclareResult;
           inFunBlock = std::regex_match(fileLine, regFunDeclareResult,
                                         funDeclarePattern);
@@ -1286,49 +1291,88 @@ void modifyLLVM(const std::string &newPath, const std::string &llName) {
                 ? loadResult[1].str()
                 : resName;
       }
-      vars.push_back(resName);
+      // FIXME 我注释了算数操作的结果的符号化 但运行时可能需要
+      //      vars.push_back(resName);
       vars.push_back(varName_1);
       vars.push_back(varName_2);
 
-      // each fun should be measured independent
-      std::vector<std::string> globalDeclares;
-      std::vector<std::string> symbolicLines;
-
       // ! 非全局变量的命名为数字
-      int gCount = 0; // count global declares
-      for (int i = 0; i < 3; ++i) {
+      // FIXME 暂时不符号化函数内变量
+      for (int i = 0; i < vars.size(); ++i) {
         std::string tmpGol = R"(@.str)";
         std::string tmpSym =
             R"(call void @klee_make_symbolic(i8* bitcast (i32* )" + vars[i] +
             R"( to i8*), i64 4, i8* getelementptr inbounds ([)" +
             std::to_string(vars[i].size()) + R"( x i8], [)" +
             std::to_string(vars[i].size()) + R"( x i8]* @.str)";
-        if (i == 0) {
+        if (gCount == 0) {
           tmpGol += " = private unnamed_addr constant [" +
                     std::to_string(vars[i].size()) + R"( x i8] c")" +
                     vars[i].substr(1) + R"(\00", align 1)";
           tmpSym += R"(, i64 0, i64 0)))";
         } else {
-          tmpGol += "." + std::to_string(i) +
+          tmpGol += "." + std::to_string(gCount) +
                     " = private unnamed_addr constant [" +
                     std::to_string(vars[i].size()) + R"( x i8] c")" +
                     vars[i].substr(1) + R"(\00", align 1)";
-          tmpSym += "." + std::to_string(i) + R"(, i64 0, i64 0)))";
+          tmpSym += "." + std::to_string(gCount) + R"(, i64 0, i64 0)))";
         }
 
         globalDeclares.push_back(tmpGol);
         symbolicLines.push_back(tmpSym);
+        gCount++;
+      }
+      globalDeclares.emplace_back(
+          "declare void @klee_make_symbolic(i8*, i64, i8*)");
+    }
+
+    // FIXME 局部变量无法使用`bitcast (%struct.str* @global to i8*)`
+    bool inGlobalDeclare = false;
+    std::regex funDeclarePattern(R"(define.*@.*\{)");
+    std::regex thisFunPattern(".*@" + funName.first + R"(.*\{)");
+    std::smatch regFunDeclareResult;
+    std::smatch regThisFunResult;
+    for (int i = 0; i < fileLines.size(); i++) {
+      std::string fileLine = fileLines[i];
+      if (fileLine.find(R"(target triple = "x86_64-pc-linux-gnu")") !=
+          std::string::npos) {
+        inGlobalDeclare = true;
+        continue;
+      }
+      if (inGlobalDeclare &&
+          fileLine.find("; Function Attrs:") != std::string::npos) {
+        for (int j = 0; j < globalDeclares.size(); j++) {
+          fileLines.insert(fileLines.begin() + i + j - 1,
+                           globalDeclares[j]);
+        }
+        i += globalDeclares.size();
+        inGlobalDeclare = false;
+        continue;
       }
 
-      // TODO 在.ll文件中添加声明和函数调用
-      // FIXME 局部变量无法使用`bitcast (%struct.str* @global to i8*)`
-      for (const auto &fileLine : fileLines) {
-        ;
+      if (!inGlobalDeclare &&
+          std::regex_match(fileLine, regFunDeclareResult, thisFunPattern)) {
+        for (int j = 0; j < symbolicLines.size(); ++j) {
+          fileLines.insert(fileLines.begin() + i + j + 1,
+                           "  " + symbolicLines[j]);
+        }
+        i += symbolicLines.size();
+        break;
       }
     }
   }
 
-  exit(0);
+  // output .ll file
+  outLLfile.open(newPath + "/" + funName.first + ".ll");
+  for (auto fileLine : fileLines)
+    outLLfile << fileLine << std::endl;
+  outLLfile.close();
+
+  // 生成 .bc文件
+  std::string command = "llvm-as " + newPath + "/" + funName.first + ".ll";
+  system(command.c_str());
+
+  return newPath + "/" + funName.first;
 }
 
 char *configArgv(std::string argv1) {
@@ -1359,11 +1403,10 @@ char *configArgv(std::string argv1) {
   command = "llvm-dis " + copyPath;
   system(command.c_str());
 
-  std::string llName = fileNames.front() + ".ll";
-  modifyLLVM(newPath, llName);
-
   // return new XX.bc path
-  argv1 = copyPath + filePaths.back();
+  std::string llName = fileNames.front() + ".ll";
+  argv1 = modifyLLVM(newPath, llName) + ".bc";
+
   return const_cast<char *>(argv1.c_str());
 }
 
