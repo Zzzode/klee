@@ -2028,6 +2028,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
     bindLocal(ki, state, AddExpr::create(left, right));
+
+    state.addConstraint(SltExpr::create(left, AddExpr::create(left, right)));
     break;
   }
 
@@ -2035,6 +2037,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
     bindLocal(ki, state, SubExpr::create(left, right));
+
+    state.addConstraint(SltExpr::create(left, right));
     break;
   }
 

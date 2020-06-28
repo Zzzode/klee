@@ -31,6 +31,7 @@ class MemoryManager;
 class Solver;
 class ArrayCache;
 
+// MemoryObject
 class MemoryObject {
   friend class STPBuilder;
   friend class ObjectState;

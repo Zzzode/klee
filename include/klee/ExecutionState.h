@@ -102,7 +102,8 @@ public:
   /// @brief Costs for all queries issued for this state, in seconds
   mutable time::Span queryCost;
 
-  /// @brief Exploration depth, i.e., number of times KLEE branched for this state
+  /// @brief Exploration depth, i.e., number of times KLEE branched for this
+  /// state
   unsigned depth;
 
   /// @brief History of complete path: represents branches taken to
@@ -124,7 +125,7 @@ public:
   bool forkDisabled;
 
   /// @brief Set containing which lines in which files are covered by this state
-  std::map<const std::string *, std::set<unsigned> > coveredLines;
+  std::map<const std::string *, std::set<unsigned>> coveredLines;
 
   /// @brief Pointer to the process tree of the current state
   PTreeNode *ptreeNode;
@@ -138,7 +139,7 @@ public:
   std::set<std::string> arrayNames;
 
   // The objects handling the klee_open_merge calls this state ran through
-  std::vector<ref<MergeHandler> > openMergeStack;
+  std::vector<ref<MergeHandler>> openMergeStack;
 
   // The numbers of times this state has run through Executor::stepInstruction
   std::uint64_t steppedInstructions;
@@ -151,7 +152,7 @@ public:
 
   // XXX total hack, just used to make a state so solver can
   // use on structure
-  ExecutionState(const std::vector<ref<Expr> > &assumptions);
+  ExecutionState(const std::vector<ref<Expr>> &assumptions);
 
   ExecutionState(const ExecutionState &state);
 
@@ -168,6 +169,6 @@ public:
   bool merge(const ExecutionState &b);
   void dumpStack(llvm::raw_ostream &out) const;
 };
-}
+} // namespace klee
 
 #endif /* KLEE_EXECUTIONSTATE_H */

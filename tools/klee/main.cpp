@@ -1375,7 +1375,8 @@ std::string modifyLLVM(const std::string &newPath, const std::string &llName) {
   return newPath + "/" + funName.first;
 }
 
-char *configArgv(std::string argv1) {
+std::vector<std::string> configArgv(std::string argv1) {
+  std::vector<std::string> result;
   std::string path = getcwd(nullptr, 0);
   std::vector<std::string> filePaths = split(argv1, "/");
 
@@ -1405,19 +1406,31 @@ char *configArgv(std::string argv1) {
 
   // return new XX.bc path
   std::string llName = fileNames.front() + ".ll";
-  argv1 = modifyLLVM(newPath, llName) + ".bc";
+  std::string thisFunPath = modifyLLVM(newPath, llName);
+  std::vector<std::string> thisFunName = split(thisFunPath, "/");
 
-  return const_cast<char *>(argv1.c_str());
+  argv1 = thisFunPath + ".bc";
+
+  result.push_back(argv1);
+  result.push_back("--entry-point=" + thisFunName.back());
+  // TODO 修改argv2 为当前函数
+  return result;
 }
 
 int main(int argc, char **argv, char **envp) {
+  argc = 3;
+  char *newArgvs[3];
   std::string tmpArgv1 = argv[1];
+  std::vector<std::string> tmpArgvs;
 
-  strcpy(argv[1], configArgv(tmpArgv1));
-  //  std::cout << argv[1];
+  tmpArgvs = configArgv(tmpArgv1);
+  strcpy(newArgvs[0], argv[0]);
+  newArgvs[1] = const_cast<char *>(tmpArgvs.front().c_str());
+  newArgvs[2] = const_cast<char *>(tmpArgvs.back().c_str());
+  argv = newArgvs;
+//  std::cout << argv[0] << " " << argv[1] << " " <<  argv[2] << std::endl;
 
-  //  exit(0);
-
+//  exit(0);
   atexit(llvm_shutdown); // Call llvm_shutdown() on exit.
 
   KCommandLine::HideOptions(llvm::cl::GeneralCategory);
