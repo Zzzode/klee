@@ -1113,6 +1113,7 @@ int main(int argc, char **argv, char **envp) {
   newArgvs[1] = const_cast<char *>(tmpArgvs.front().c_str());
   newArgvs[2] = const_cast<char *>(tmpArgvs.back().c_str());
   argv = newArgvs;
+  cout << argv[0] << " " << argv[1] << " " << argv[2] << endl;
 
   atexit(llvm_shutdown); // Call llvm_shutdown() on exit.
 

@@ -38,13 +38,14 @@ cmake-build-debug/
 
 # klee example files
 *.bc
-# *.ll
-# *.ktest
-# info
-# run.istats
-# run.stats
-# messages.txt
-# warnings.txt
+*.ll
+*.ktest
+info
+run.istats
+run.stats
+messages.txt
+warnings.txt
 
 klee-out*
 klee-last
+

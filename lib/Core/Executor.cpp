@@ -2027,9 +2027,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Add: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    bindLocal(ki, state, AddExpr::create(left, right));
+    ref<Expr> result = AddExpr::create(left, right);
+    bindLocal(ki, state, result);
 
-    state.addConstraint(SltExpr::create(left, AddExpr::create(left, right)));
+    if (ki->operands[0] > 0 && ki->operands[1] > 0)
+      state.addConstraint(SgtExpr::create(left, result));
+
     break;
   }
 

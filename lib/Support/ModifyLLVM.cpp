@@ -3,15 +3,15 @@
 //
 #include "klee/ModifyLLVM.h"
 
-#include <dirent.h>
-#include <unistd.h>
 #include <cstring>
-#include <sys/stat.h>
+#include <dirent.h>
 #include <fstream>
 #include <iostream>
 #include <rapidjson/document.h>
 #include <rapidjson/filereadstream.h>
 #include <regex>
+#include <sys/stat.h>
+#include <unistd.h>
 
 vector<string> split(const string &str, const string &delim) {
   vector<string> res;
@@ -26,16 +26,15 @@ vector<string> split(const string &str, const string &delim) {
 
   char *p = strtok(strs, d);
   while (p) {
-    string s = p; //分割得到的字符串转换为string类型
-    res.push_back(s);  //存入结果数组
+    string s = p;     //分割得到的字符串转换为string类型
+    res.push_back(s); //存入结果数组
     p = strtok(nullptr, d);
   }
 
   return res;
 }
 
-vector<pair<string, set<vector<string>>>>
-parseJson(const string &newPath) {
+vector<pair<string, set<vector<string>>>> parseJson(const string &newPath) {
   //从文件中读取，保证当前文件夹有.json文件
   string jsonPath = newPath + "/" + "test.json";
   ifstream inFile(jsonPath, ios::in);
@@ -67,8 +66,7 @@ parseJson(const string &newPath) {
   }
 
   // 解析json及inst
-  vector<pair<string, set<vector<string>>>>
-      instructions;
+  vector<pair<string, set<vector<string>>>> instructions;
   rapidjson::Document document;
   document.Parse(buf.str().c_str());
   for (const auto &funName : funNames) {
@@ -141,8 +139,7 @@ string modifyLLVM(const string &newPath, const string &llName) {
 
   inLLFile.close();
 
-  vector<pair<string, set<vector<string>>>>
-      funNames;
+  vector<pair<string, set<vector<string>>>> funNames;
   funNames = parseJson(newPath);
 
   // measure all Functions
@@ -162,16 +159,15 @@ string modifyLLVM(const string &newPath, const string &llName) {
   if (!funName.first.empty()) {
     // configure llvm lines
     int gCount = 0; // count global declares
+    set<string> vars;
     for (auto instructions : funName.second) {
-      regex varReg_1(" *" + instructions[3] +
-                          R"( = load i32, i32\* (@\w+).*)");
-      regex varReg_2(" *" + instructions[4] +
-                          R"( = load i32, i32\* (@\w+).*)");
+      regex varReg_1(" *" + instructions[3] + R"( = load i32, i32\* (@\w+).*)");
+      regex varReg_2(" *" + instructions[4] + R"( = load i32, i32\* (@\w+).*)");
       regex resReg(R"( *store i32 )" + instructions[0] +
-                        R"(, i32\* ([@%]\w+).*)");
+                   R"(, i32\* ([@%]\w+).*)");
       smatch loadResult;
       string varName_1, varName_2, resName;
-      vector<string> vars;
+
       // FIXME 这边需要先确定.ll文件中的最初声明位置
       bool inFunBlock = false;
       for (const auto &fileLine : fileLines) {
@@ -182,58 +178,59 @@ string modifyLLVM(const string &newPath, const string &llName) {
         if (!inFunBlock) {
           regex funDeclarePattern(".*@" + funName.first + R"(.*\{)");
           smatch regFunDeclareResult;
-          inFunBlock = regex_match(fileLine, regFunDeclareResult,
-                                        funDeclarePattern);
+          inFunBlock =
+              regex_match(fileLine, regFunDeclareResult, funDeclarePattern);
           continue;
         }
 
-        varName_1 = regex_match(fileLine, loadResult, varReg_1) &&
-                    varName_1.empty()
-                    ? loadResult[1].str()
-                    : varName_1;
-        varName_2 = regex_match(fileLine, loadResult, varReg_2) &&
-                    varName_2.empty()
-                    ? loadResult[1].str()
-                    : varName_2;
-        resName =
-            regex_match(fileLine, loadResult, resReg) && resName.empty()
-            ? loadResult[1].str()
-            : resName;
+        varName_1 =
+            regex_match(fileLine, loadResult, varReg_1) && varName_1.empty()
+                ? loadResult[1].str()
+                : varName_1;
+        varName_2 =
+            regex_match(fileLine, loadResult, varReg_2) && varName_2.empty()
+                ? loadResult[1].str()
+                : varName_2;
+        resName = regex_match(fileLine, loadResult, resReg) && resName.empty()
+                      ? loadResult[1].str()
+                      : resName;
       }
       // FIXME 我注释了算数操作的结果的符号化 但运行时可能需要
       //      vars.push_back(resName);
-      vars.push_back(varName_1);
-      vars.push_back(varName_2);
+      vars.insert(varName_1);
+      vars.insert(varName_2);
 
-      // ! 非全局变量的命名为数字
-      // FIXME 暂时不符号化函数内变量
-      for (auto & var : vars) {
-        string tmpGol = R"(@.str)";
-        string tmpSym =
-            R"(call void @klee_make_symbolic(i8* bitcast (i32* )" + var +
-            R"( to i8*), i64 4, i8* getelementptr inbounds ([)" +
-            to_string(var.size()) + R"( x i8], [)" +
-            to_string(var.size()) + R"( x i8]* @.str)";
-        if (gCount == 0) {
-          tmpGol += " = private unnamed_addr constant [" +
-                    to_string(var.size()) + R"( x i8] c")" +
-                    var.substr(1) + R"(\00", align 1)";
-          tmpSym += R"(, i64 0, i64 0)))";
-        } else {
-          tmpGol += "." + to_string(gCount) +
-                    " = private unnamed_addr constant [" +
-                    to_string(var.size()) + R"( x i8] c")" +
-                    var.substr(1) + R"(\00", align 1)";
-          tmpSym += "." + to_string(gCount) + R"(, i64 0, i64 0)))";
-        }
-
-        globalDeclares.push_back(tmpGol);
-        symbolicLines.push_back(tmpSym);
-        gCount++;
-      }
-      globalDeclares.emplace_back(
-          "declare void @klee_make_symbolic(i8*, i64, i8*)");
     }
+    // ! 非全局变量的命名为数字
+    // FIXME 暂时不符号化函数内变量
+    for (auto &var : vars) {
+      if (var.empty())
+        continue;
+      string tmpGol = R"(@.str)";
+      string tmpSym = R"(call void @klee_make_symbolic(i8* bitcast (i32* )" +
+                      var +
+                      R"( to i8*), i64 4, i8* getelementptr inbounds ([)" +
+                      to_string(var.size()) + R"( x i8], [)" +
+                      to_string(var.size()) + R"( x i8]* @.str)";
+      if (gCount == 0) {
+        tmpGol += " = private unnamed_addr constant [" +
+                  to_string(var.size()) + R"( x i8] c")" + var.substr(1, var.size() - 1) +
+                  R"(\00", align 1)";
+        tmpSym += R"(, i64 0, i64 0)))";
+      } else {
+        tmpGol += "." + to_string(gCount) +
+                  " = private unnamed_addr constant [" +
+                  to_string(var.size()) + R"( x i8] c")" + var.substr(1, var.size() - 1) +
+                  R"(\00", align 1)";
+        tmpSym += "." + to_string(gCount) + R"(, i64 0, i64 0)))";
+      }
+
+      globalDeclares.push_back(tmpGol);
+      symbolicLines.push_back(tmpSym);
+      gCount++;
+    }
+    globalDeclares.emplace_back(
+        "declare void @klee_make_symbolic(i8*, i64, i8*)");
 
     // FIXME 局部变量无法使用`bitcast (%struct.str* @global to i8*)`
     bool inGlobalDeclare = false;
@@ -251,8 +248,7 @@ string modifyLLVM(const string &newPath, const string &llName) {
       if (inGlobalDeclare &&
           fileLine.find("; Function Attrs:") != string::npos) {
         for (int j = 0; j < globalDeclares.size(); j++) {
-          fileLines.insert(fileLines.begin() + i + j - 1,
-                           globalDeclares[j]);
+          fileLines.insert(fileLines.begin() + i + j - 1, globalDeclares[j]);
         }
         i += globalDeclares.size();
         inGlobalDeclare = false;
@@ -320,8 +316,8 @@ vector<string> configArgv(string argv1) {
 
   argv1 = thisFunPath + ".bc";
 
-  result.push_back(argv1);
   result.push_back("--entry-point=" + thisFunName.back());
+  result.push_back(argv1);
   // TODO 修改argv2 为当前函数
   return result;
 }
