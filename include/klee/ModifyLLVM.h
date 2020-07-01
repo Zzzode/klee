@@ -19,7 +19,7 @@ using namespace std;
 
 vector<string> split(const string &str, const string &delim);
 
-vector<pair<string, set<vector<string>>>> parseJson(const string &newPath);
+vector<pair<string, set<vector<string>>>> parseJson(const string &newPath, const string &llName);
 
 void getFiles(const string &newPath, vector<string> &fileNames);
 

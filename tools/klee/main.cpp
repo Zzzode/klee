@@ -1103,17 +1103,21 @@ linkWithUclibc(StringRef libDir,
 #endif
 
 int main(int argc, char **argv, char **envp) {
-  argc = 3;
-  char *newArgvs[3];
+  argc = 11;
+  char *newArgvs[10];
   std::string tmpArgv1 = argv[1];
   std::vector<std::string> tmpArgvs;
 
   tmpArgvs = configArgv(tmpArgv1);
   strcpy(newArgvs[0], argv[0]);
-  newArgvs[1] = const_cast<char *>(tmpArgvs.front().c_str());
-  newArgvs[2] = const_cast<char *>(tmpArgvs.back().c_str());
+  for (int i = 0; i < 10; ++i)
+    newArgvs[i + 1] = const_cast<char *>(tmpArgvs[i].c_str());
+
   argv = newArgvs;
-  cout << argv[0] << " " << argv[1] << " " << argv[2] << endl;
+  for (int j = 0; j < 10; ++j) {
+    cout << argv[j] << endl;
+  }
+//  exit(0);
 
   atexit(llvm_shutdown); // Call llvm_shutdown() on exit.
 

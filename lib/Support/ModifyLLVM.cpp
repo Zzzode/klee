@@ -13,30 +13,31 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-vector<string> split(const string &str, const string &delim) {
+vector<string> split(const string &str, const string &pattern) {
   vector<string> res;
-  if (str.empty())
+  if(str == "")
     return res;
-  //先将要切割的字符串从string类型转换为char*类型
-  char *strs = new char[str.length() + 1]; //不要忘了
-  strcpy(strs, str.c_str());
+  //在字符串末尾也加入分隔符，方便截取最后一段
+  string strs = str + pattern;
+  size_t pos = strs.find(pattern);
 
-  char *d = new char[delim.length() + 1];
-  strcpy(d, delim.c_str());
-
-  char *p = strtok(strs, d);
-  while (p) {
-    string s = p;     //分割得到的字符串转换为string类型
-    res.push_back(s); //存入结果数组
-    p = strtok(nullptr, d);
+  while(pos != std::string::npos)
+  {
+    string temp = strs.substr(0, pos);
+    res.push_back(temp);
+    //去掉已分割的字符串,在剩下的字符串中进行分割
+    strs = strs.substr(pos+1, strs.size());
+    pos = strs.find(pattern);
   }
 
   return res;
 }
 
-vector<pair<string, set<vector<string>>>> parseJson(const string &newPath) {
+vector<pair<string, set<vector<string>>>> parseJson(const string &newPath,
+                                                    const string &llName) {
+  vector<string> jsonNames = split(llName, ".ll");
   //从文件中读取，保证当前文件夹有.json文件
-  string jsonPath = newPath + "/" + "test.json";
+  string jsonPath = newPath + "/" + jsonNames.front() + ".json";
   ifstream inFile(jsonPath, ios::in);
   if (!inFile.is_open()) {
     cout << "Error opening file\n";
@@ -121,6 +122,7 @@ void getFiles(const string &newPath, vector<string> &fileNames) {
 string modifyLLVM(const string &newPath, const string &llName) {
   ifstream inLLFile;
   ofstream outLLfile;
+  fstream funNums;
 
   vector<string> fileNames;
   getFiles(newPath, fileNames);
@@ -140,7 +142,7 @@ string modifyLLVM(const string &newPath, const string &llName) {
   inLLFile.close();
 
   vector<pair<string, set<vector<string>>>> funNames;
-  funNames = parseJson(newPath);
+  funNames = parseJson(newPath, llName);
 
   // measure all Functions
   // each fun should be measured independent
@@ -148,12 +150,24 @@ string modifyLLVM(const string &newPath, const string &llName) {
   vector<string> symbolicLines;
   pair<string, set<vector<string>>> funName;
   for (const auto &tmpfunName : funNames) {
+    auto it = find(fileNames.begin(), fileNames.end(), tmpfunName.first + ".ll");
     // find if this function has figured
-    if (find(fileNames.begin(), fileNames.end(), funName.first) !=
-        fileNames.end())
+    if (it != fileNames.end()) {
+      if (tmpfunName == funNames.back()){
+        string countPath = newPath + "/funNums";
+        if (access(countPath.c_str(), F_OK) == -1) {
+          funNums.open(newPath + "/funNums", ios::out);
+          funNums << funNames.size() << endl;
+          funNums.close();
+        }
+        exit(0);
+      }
       continue;
-
-    funName = tmpfunName;
+    }
+    if (!tmpfunName.first.empty()) {
+      funName = tmpfunName;
+      break;
+    }
   }
 
   if (!funName.first.empty()) {
@@ -168,7 +182,7 @@ string modifyLLVM(const string &newPath, const string &llName) {
       smatch loadResult;
       string varName_1, varName_2, resName;
 
-      // FIXME 这边需要先确定.ll文件中的最初声明位置
+      // 这边需要先确定.ll文件中的最初声明位置
       bool inFunBlock = false;
       for (const auto &fileLine : fileLines) {
         if (inFunBlock && fileLine.find('}') != string::npos) {
@@ -195,11 +209,10 @@ string modifyLLVM(const string &newPath, const string &llName) {
                       ? loadResult[1].str()
                       : resName;
       }
-      // FIXME 我注释了算数操作的结果的符号化 但运行时可能需要
-      //      vars.push_back(resName);
+      // ! 我注释了算数操作的结果的符号化 但运行时可能需要
+      // vars.push_back(resName);
       vars.insert(varName_1);
       vars.insert(varName_2);
-
     }
     // ! 非全局变量的命名为数字
     // FIXME 暂时不符号化函数内变量
@@ -213,14 +226,14 @@ string modifyLLVM(const string &newPath, const string &llName) {
                       to_string(var.size()) + R"( x i8], [)" +
                       to_string(var.size()) + R"( x i8]* @.str)";
       if (gCount == 0) {
-        tmpGol += " = private unnamed_addr constant [" +
-                  to_string(var.size()) + R"( x i8] c")" + var.substr(1, var.size() - 1) +
+        tmpGol += " = private unnamed_addr constant [" + to_string(var.size()) +
+                  R"( x i8] c")" + var.substr(1, var.size() - 1) +
                   R"(\00", align 1)";
         tmpSym += R"(, i64 0, i64 0)))";
       } else {
         tmpGol += "." + to_string(gCount) +
-                  " = private unnamed_addr constant [" +
-                  to_string(var.size()) + R"( x i8] c")" + var.substr(1, var.size() - 1) +
+                  " = private unnamed_addr constant [" + to_string(var.size()) +
+                  R"( x i8] c")" + var.substr(1, var.size() - 1) +
                   R"(\00", align 1)";
         tmpSym += "." + to_string(gCount) + R"(, i64 0, i64 0)))";
       }
@@ -241,7 +254,9 @@ string modifyLLVM(const string &newPath, const string &llName) {
     for (int i = 0; i < fileLines.size(); i++) {
       string fileLine = fileLines[i];
       if (fileLine.find(R"(target triple = "x86_64-pc-linux-gnu")") !=
-          string::npos) {
+              string::npos ||
+          fileLine.find(R"(target triple = "x86_64-unknown-linux-gnu")") !=
+              string::npos) {
         inGlobalDeclare = true;
         continue;
       }
@@ -273,16 +288,12 @@ string modifyLLVM(const string &newPath, const string &llName) {
     outLLfile << fileLine << endl;
   outLLfile.close();
 
-  // 生成 .bc文件
-  string command = "llvm-as " + newPath + "/" + funName.first + ".ll";
-  system(command.c_str());
-
   return newPath + "/" + funName.first;
 }
 
 vector<string> configArgv(string argv1) {
   vector<string> result;
-  string path = getcwd(nullptr, 0);
+  string path;
   vector<string> filePaths = split(argv1, "/");
 
   vector<string>::const_iterator first = filePaths.begin();
@@ -290,9 +301,9 @@ vector<string> configArgv(string argv1) {
       filePaths.begin() + filePaths.size() - 1;
   vector<string> cutPath(first, last);
   for (const auto &tmpPath : cutPath)
-    path += "/" + tmpPath;
+    path += tmpPath.empty() ? "" : "/" + tmpPath;
 
-  vector<string> fileNames = split(filePaths.back(), ".");
+  vector<string> fileNames = split(filePaths.back(), ".ll");
   string newPath = path + "/" + fileNames.front();
   //  puts(newPath.c_str());
 
@@ -304,20 +315,26 @@ vector<string> configArgv(string argv1) {
   string sourcePath = path + "/" + filePaths.back();
   string command = "cp " + sourcePath + " " + copyPath;
   system(command.c_str());
-
-  // translate to .ll file
-  command = "llvm-dis " + copyPath;
+  command = "cp " + path + "/" + fileNames.front() + ".json" + " " + newPath +
+            "/" + fileNames.front() + ".json";
   system(command.c_str());
 
   // return new XX.bc path
-  string llName = fileNames.front() + ".ll";
+  string llName = filePaths.back();
   string thisFunPath = modifyLLVM(newPath, llName);
   vector<string> thisFunName = split(thisFunPath, "/");
 
-  argv1 = thisFunPath + ".bc";
+  argv1 = thisFunPath + ".ll";
 
+  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/intrinsics.bc");
+  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libkleeRuntimeIntrinsic.a");
+  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libnative.a");
+  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libnative_c++.a");
+  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libnative_c.a");
+  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libnative_eosio.a");
+  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libnative_rt.a");
   result.push_back("--entry-point=" + thisFunName.back());
   result.push_back(argv1);
-  // TODO 修改argv2 为当前函数
+
   return result;
 }
