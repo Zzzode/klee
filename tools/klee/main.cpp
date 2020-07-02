@@ -660,6 +660,7 @@ std::string KleeHandler::getRunTimeLibraryPath(const char *argv0) {
   }
 
   KLEE_DEBUG_WITH_TYPE("klee_runtime", llvm::dbgs() << libDir.c_str() << "\n");
+  string tmp = libDir.str();
   return libDir.str();
 }
 

@@ -295,7 +295,7 @@ vector<string> configArgv(string argv1) {
   vector<string> result;
   string path;
   vector<string> filePaths = split(argv1, "/");
-
+  vector<string> thisPaths = split(getcwd(nullptr, 0), "/");
   vector<string>::const_iterator first = filePaths.begin();
   vector<string>::const_iterator last =
       filePaths.begin() + filePaths.size() - 1;
@@ -326,13 +326,17 @@ vector<string> configArgv(string argv1) {
 
   argv1 = thisFunPath + ".ll";
 
-  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/intrinsics.bc");
-  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libkleeRuntimeIntrinsic.a");
-  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libnative.a");
-  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libnative_c++.a");
-  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libnative_c.a");
-  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libnative_eosio.a");
-  result.emplace_back("-link-llvm-lib=/home/zode/Dataset/EOSData/eosLibs/lib/libnative_rt.a");
+  string libPath = "/";
+  for (int i = 1; i < thisPaths.size() - 2; ++i) {
+    libPath += thisPaths[i] + "/";
+  }
+  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/intrinsics.bc");
+  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/wasm-rt-impl.bc");
+  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libnative_c++.a");
+  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libnative_c.a");
+  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libnative_eosio.a");
+  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libeosio.a");
+  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libnative_rt.a");
   result.push_back("--entry-point=" + thisFunName.back());
   result.push_back(argv1);
 
