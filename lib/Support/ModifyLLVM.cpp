@@ -142,6 +142,7 @@ string modifyLLVM(const string &newPath, const string &llName) {
   inLLFile.close();
 
   vector<pair<string, set<vector<string>>>> funNames;
+  cout << "Parsing Json" << endl;
   funNames = parseJson(newPath, llName);
 
   // measure all Functions
@@ -321,6 +322,7 @@ vector<string> configArgv(string argv1) {
 
   // return new XX.bc path
   string llName = filePaths.back();
+  printf("Start Modifying\n");
   string thisFunPath = modifyLLVM(newPath, llName);
   vector<string> thisFunName = split(thisFunPath, "/");
 
@@ -339,6 +341,7 @@ vector<string> configArgv(string argv1) {
   result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libnative_rt.a");
   result.push_back("--entry-point=" + thisFunName.back());
   result.push_back(argv1);
+  printf("Modify OK!\n");
 
   return result;
 }
