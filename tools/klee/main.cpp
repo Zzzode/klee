@@ -1113,7 +1113,7 @@ int main(int argc, char **argv, char **envp) {
   strcpy(newArgvs[0], argv[0]);
   for (int i = 0; i < 10; ++i)
     newArgvs[i + 1] = const_cast<char *>(tmpArgvs[i].c_str());
-
+  cout << "Pointer assignment!" << endl;
   argv = newArgvs;
   for (int j = 0; j < 10; ++j) {
     cout << argv[j] << endl;
