@@ -147,6 +147,7 @@ string modifyLLVM(const string &newPath, const string &llName) {
   cout << "Done Parsing Json!" << endl;
   // measure all Functions
   // each fun should be measured independent
+  // TODO 创建所有的ll 多线程修改
   vector<string> globalDeclares;
   vector<string> symbolicLines;
   pair<string, set<vector<string>>> funName;
@@ -346,3 +347,5 @@ vector<string> configArgv(string argv1) {
   cout << "Changing argvs!" << endl;
   return result;
 }
+
+ModifyLLVM::ModifyLLVM(int argc, char **argv) { ; }
