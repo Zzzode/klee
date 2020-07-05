@@ -18,8 +18,9 @@ klee_add_component(kleeSupport
   TreeStream.cpp
   ModifyLLVM.cpp
 )
-
-target_link_libraries(kleeSupport PRIVATE ${ZLIB_LIBRARIES})
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+target_link_libraries(kleeSupport PRIVATE ${ZLIB_LIBRARIES} Threads::Threads)
 
 set(LLVM_COMPONENTS
   support

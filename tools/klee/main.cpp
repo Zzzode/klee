@@ -1104,22 +1104,16 @@ linkWithUclibc(StringRef libDir,
 #endif
 
 int main(int argc, char **argv, char **envp) {
-  argc = 11;
-  char *newArgvs[10];
-  std::string tmpArgv1 = argv[1];
-  std::vector<std::string> tmpArgvs;
+  ModifyLLVM modifyLlvm;
+  std::string tmpArgv2 = argv[2];
 
-  tmpArgvs = configArgv(tmpArgv1);
-  newArgvs[0] = (char*)malloc((strlen(argv[0]) + 1)*sizeof(char));
-  strcpy(newArgvs[0], argv[0]);
-  for (int i = 0; i < 10; ++i)
-    newArgvs[i + 1] = const_cast<char *>(tmpArgvs[i].c_str());
-  cout << "Pointer assignment OK!" << endl;
-  argv = newArgvs;
-  for (int j = 0; j < 10; ++j) {
-    cout << argv[j] << endl;
+  modifyLlvm.configArgv(tmpArgv2);
+
+  cout << "Generate LLVM files OK!" << endl;
+
+  for (int i = 0; i < argc; ++i) {
+    cout << argv[i] << endl;
   }
-//  exit(0);
 
   atexit(llvm_shutdown); // Call llvm_shutdown() on exit.
 

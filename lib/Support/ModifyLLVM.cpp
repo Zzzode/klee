@@ -15,26 +15,24 @@
 
 vector<string> split(const string &str, const string &pattern) {
   vector<string> res;
-  if(str == "")
+  if (str == "")
     return res;
   //在字符串末尾也加入分隔符，方便截取最后一段
   string strs = str + pattern;
   size_t pos = strs.find(pattern);
 
-  while(pos != std::string::npos)
-  {
+  while (pos != std::string::npos) {
     string temp = strs.substr(0, pos);
     res.push_back(temp);
     //去掉已分割的字符串,在剩下的字符串中进行分割
-    strs = strs.substr(pos+1, strs.size());
+    strs = strs.substr(pos + 1, strs.size());
     pos = strs.find(pattern);
   }
 
   return res;
 }
 
-vector<pair<string, set<vector<string>>>> parseJson(const string &newPath,
-                                                    const string &llName) {
+void ModifyLLVM::parseJson(const string &newPath, const string &llName) {
   vector<string> jsonNames = split(llName, ".ll");
   //从文件中读取，保证当前文件夹有.json文件
   string jsonPath = newPath + "/" + jsonNames.front() + ".json";
@@ -67,7 +65,6 @@ vector<pair<string, set<vector<string>>>> parseJson(const string &newPath,
   }
 
   // 解析json及inst
-  vector<pair<string, set<vector<string>>>> instructions;
   rapidjson::Document document;
   document.Parse(buf.str().c_str());
   for (const auto &funName : funNames) {
@@ -88,13 +85,11 @@ vector<pair<string, set<vector<string>>>> parseJson(const string &newPath,
     }
 
     tmpPair = make_pair(funName, tmpSet);
-    instructions.push_back(tmpPair);
+    funcs.push_back(tmpPair);
   }
-
-  return instructions;
 }
 
-void getFiles(const string &newPath, vector<string> &fileNames) {
+void ModifyLLVM::getFiles(const string &newPath, vector<string> &fileNames) {
   DIR *dir;
   struct dirent *ptr;
   char base[1000];
@@ -119,13 +114,9 @@ void getFiles(const string &newPath, vector<string> &fileNames) {
   closedir(dir);
 }
 
-string modifyLLVM(const string &newPath, const string &llName) {
+void ModifyLLVM::configFunNames(const string &newPath, const string &llName) {
   ifstream inLLFile;
-  ofstream outLLfile;
-  fstream funNums;
 
-  vector<string> fileNames;
-  getFiles(newPath, fileNames);
   // open .ll file
   string llvmPath = newPath + "/" + llName;
   inLLFile.open(llvmPath, ios::in);
@@ -134,49 +125,50 @@ string modifyLLVM(const string &newPath, const string &llName) {
     exit(0);
   }
 
-  vector<string> fileLines;
   string thisLine;
   while (getline(inLLFile, thisLine))
     fileLines.push_back(thisLine);
 
   inLLFile.close();
 
-  vector<pair<string, set<vector<string>>>> funNames;
   cout << "Parsing Json" << endl;
-  funNames = parseJson(newPath, llName);
+  parseJson(newPath, llName);
   cout << "Done Parsing Json!" << endl;
   // measure all Functions
   // each fun should be measured independent
-  // TODO 创建所有的ll 多线程修改
+  threadControl();
+}
+
+void ModifyLLVM::threadControl() {
+  fstream funNums;
+  string path;
+  thread threads[funcs.size()];
+
+  getFiles(newPath, newLLPath);
+  for (int i = 0; i < funcs.size(); i++) {
+    threads[i] = thread(&ModifyLLVM::ModifyLLFile, this, funcs[i]);
+  }
+  for(auto &thread : threads)
+    thread.join();
+
+  path = newPath + "/funNums";
+  if (access(path.c_str(), F_OK) == -1) {
+    funNums.open(newPath + "/funNums", ios::out);
+    funNums << funcs.size() << endl;
+    funNums.close();
+  }
+}
+
+void ModifyLLVM::ModifyLLFile(const pair<string, set<vector<string>>> &func) {
+  ofstream outLLfile;
   vector<string> globalDeclares;
   vector<string> symbolicLines;
-  pair<string, set<vector<string>>> funName;
-  for (const auto &tmpfunName : funNames) {
-    auto it = find(fileNames.begin(), fileNames.end(), tmpfunName.first + ".ll");
-    // find if this function has figured
-    if (it != fileNames.end()) {
-      if (tmpfunName == funNames.back()){
-        string countPath = newPath + "/funNums";
-        if (access(countPath.c_str(), F_OK) == -1) {
-          funNums.open(newPath + "/funNums", ios::out);
-          funNums << funNames.size() << endl;
-          funNums.close();
-        }
-        exit(0);
-      }
-      continue;
-    }
-    if (!tmpfunName.first.empty()) {
-      funName = tmpfunName;
-      break;
-    }
-  }
 
-  if (!funName.first.empty()) {
+  if (!func.first.empty()) {
     // configure llvm lines
     int gCount = 0; // count global declares
     set<string> vars;
-    for (auto instructions : funName.second) {
+    for (auto instructions : func.second) {
       regex varReg_1(" *" + instructions[3] + R"( = load i32, i32\* (@\w+).*)");
       regex varReg_2(" *" + instructions[4] + R"( = load i32, i32\* (@\w+).*)");
       regex resReg(R"( *store i32 )" + instructions[0] +
@@ -192,7 +184,7 @@ string modifyLLVM(const string &newPath, const string &llName) {
           break;
         }
         if (!inFunBlock) {
-          regex funDeclarePattern(".*@" + funName.first + R"(.*\{)");
+          regex funDeclarePattern(".*@" + func.first + R"(.*\{)");
           smatch regFunDeclareResult;
           inFunBlock =
               regex_match(fileLine, regFunDeclareResult, funDeclarePattern);
@@ -250,7 +242,7 @@ string modifyLLVM(const string &newPath, const string &llName) {
     // FIXME 局部变量无法使用`bitcast (%struct.str* @global to i8*)`
     bool inGlobalDeclare = false;
     regex funDeclarePattern(R"(define.*@.*\{)");
-    regex thisFunPattern(".*@" + funName.first + R"(.*\{)");
+    regex thisFunPattern(".*@" + func.first + R"(.*\{)");
     smatch regFunDeclareResult;
     smatch regThisFunResult;
     for (int i = 0; i < fileLines.size(); i++) {
@@ -285,19 +277,17 @@ string modifyLLVM(const string &newPath, const string &llName) {
   }
 
   // output .ll file
-  outLLfile.open(newPath + "/" + funName.first + ".ll");
+  outLLfile.open(newPath + "/" + func.first + ".ll");
   for (auto fileLine : fileLines)
     outLLfile << fileLine << endl;
   outLLfile.close();
   cout << "Modify LLVM OK!" << endl;
-
-  return newPath + "/" + funName.first;
 }
 
-vector<string> configArgv(string argv1) {
+void ModifyLLVM::configArgv(const string&argv2) {
   vector<string> result;
   string path;
-  vector<string> filePaths = split(argv1, "/");
+  vector<string> filePaths = split(argv2, "/");
   vector<string> thisPaths = split(getcwd(nullptr, 0), "/");
   vector<string>::const_iterator first = filePaths.begin();
   vector<string>::const_iterator last =
@@ -307,7 +297,7 @@ vector<string> configArgv(string argv1) {
     path += tmpPath.empty() ? "" : "/" + tmpPath;
 
   vector<string> fileNames = split(filePaths.back(), ".ll");
-  string newPath = path + "/" + fileNames.front();
+  newPath = path + "/" + fileNames.front();
   //  puts(newPath.c_str());
 
   if (access(newPath.c_str(), 0) != 0)
@@ -325,27 +315,29 @@ vector<string> configArgv(string argv1) {
   // return new XX.bc path
   string llName = filePaths.back();
   cout << "Start Modifying" << endl;
-  string thisFunPath = modifyLLVM(newPath, llName);
-  vector<string> thisFunName = split(thisFunPath, "/");
-
-  argv1 = thisFunPath + ".ll";
+  configFunNames(newPath, llName);
 
   string libPath = "/";
   for (int i = 1; i < thisPaths.size() - 2; ++i) {
     libPath += thisPaths[i] + "/";
   }
-  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/intrinsics.bc");
-  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/wasm-rt-impl.bc");
-  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libnative_c++.a");
-  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libnative_c.a");
-  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libnative_eosio.a");
-  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libeosio.a");
-  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libnative_rt.a");
-  result.push_back("--entry-point=" + thisFunName.back());
-  result.push_back(argv1);
 
-  cout << "Changing argvs!" << endl;
-  return result;
+  result.emplace_back("-link-llvm-lib=" + libPath +
+                      "eosLibs/lib/intrinsics.bc");
+  result.emplace_back("-link-llvm-lib=" + libPath +
+                      "eosLibs/lib/wasm-rt-impl.bc");
+  result.emplace_back("-link-llvm-lib=" + libPath +
+                      "eosLibs/lib/libnative_c++.a");
+  result.emplace_back("-link-llvm-lib=" + libPath +
+                      "eosLibs/lib/libnative_c.a");
+  result.emplace_back("-link-llvm-lib=" + libPath +
+                      "eosLibs/lib/libnative_eosio.a");
+  result.emplace_back("-link-llvm-lib=" + libPath + "eosLibs/lib/libeosio.a");
+  result.emplace_back("-link-llvm-lib=" + libPath +
+                      "eosLibs/lib/libnative_rt.a");
+  result.push_back(argv2);
 }
 
-ModifyLLVM::ModifyLLVM(int argc, char **argv) { ; }
+ModifyLLVM::ModifyLLVM() {
+  ;
+}
